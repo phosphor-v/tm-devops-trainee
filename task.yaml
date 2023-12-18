@@ -111,6 +111,7 @@ Resources:
       TaskDefinition: !Ref ECSContainerDefinition
       NetworkConfiguration:
         AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
           Subnets: !Ref SubnetIds
           SecurityGroups: [!Ref ECSSecurityGroup]
 
