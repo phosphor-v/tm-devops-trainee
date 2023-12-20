@@ -36,7 +36,7 @@ Resources:
     Type: "AWS::EC2::RouteTable"
     Properties:
       VpcId: !Ref "VPC"
-  PublicRoute:   # Public route table has direct routing to IGW:
+  PublicRoute:
     Type: AWS::EC2::Route
     Properties:
       RouteTableId: !Ref RouteTable
@@ -218,6 +218,7 @@ Resources:
     DependsOn:
     - LambdaExecutionRole
     - FileSystem
+    - LoadBalancer
     - EFSMountTargetOne
     - EFSMountTargetTwo
     Type: 'AWS::Lambda::Function'
@@ -232,11 +233,18 @@ Resources:
           exports.handler = async (event) => {
             const content = '<html><h1>Hello, Techmagic!</h1></html>';
             await fs.writeFile('/mnt/efs-volume/index.html', content);
-            return {
-              statusCode: 200,
-              body: 'index.html created successfully.'
-            };
-          };
+            var responseBody = JSON.stringify({
+              Status: "SUCCESS",
+              Reason: "See the details in CloudWatch Log Stream: ",
+              PhysicalResourceId: "3843",
+              StackId: event.StackId,
+              RequestId: event.RequestId,
+              LogicalResourceId: event.LogicalResourceId,
+              NoEcho: false,
+              Data: "200"
+            });
+          return(responseBody)
+          }
       VpcConfig:
         SecurityGroupIds:
           - !Ref EFSSecurityGroup
@@ -247,7 +255,13 @@ Resources:
       FileSystemConfigs:
         - Arn: !GetAtt AccessPointResource.Arn
           LocalMountPath: '/mnt/efs-volume'
-  # Mount target allows usage of the EFS inside of subnet two
+  InvokeLambda:
+    Type: AWS::CloudFormation::CustomResource
+    DependsOn: LambdaFunction
+    Version: "1.0"
+    Properties:
+      Timeout: 15
+      ServiceToken: !GetAtt LambdaFunction.Arn
   EFSMountTargetTwo:
     Type: AWS::EFS::MountTarget
     DependsOn:
