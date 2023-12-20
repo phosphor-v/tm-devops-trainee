@@ -1,72 +1,23 @@
-# Requirements
- - Amazon Web Services trial account.
+# Deploy instructions:
+### Open AWS console and navigate to *CloudFormation*, then click on *Create Stack*
+![image](https://github.com/phosphor-v/tm-devops-trainee/assets/113942255/899ae8d9-fbcb-455a-a024-32223abb6e7f)
+### Select *Upload template file* then upload task.yaml and click *Next*
+![image](https://github.com/phosphor-v/tm-devops-trainee/assets/113942255/3c4397ed-01f8-4fa4-9e07-f919ecad8056)
+### Give name of stack and click *next* to last page a place mark in information sentence before click on *Sumbit*
+![image](https://github.com/phosphor-v/tm-devops-trainee/assets/113942255/b53d01ce-3352-4529-b56e-2ed75488cd68)
+![image](https://github.com/phosphor-v/tm-devops-trainee/assets/113942255/f93dca92-c168-48a3-be35-53a86b23a9e9)
+### Wait for the resources to be created
+![image](https://github.com/phosphor-v/tm-devops-trainee/assets/113942255/e69761ee-1c84-499f-acce-867361c3ee29)
+### After creation you will see **CREATE_COMPLETE**
+![image](https://github.com/phosphor-v/tm-devops-trainee/assets/113942255/03bea937-305f-4e18-9025-a8ca09b967d5)
+### Navigate to *Outputs* and click on *LoadBalancerURL valoue*
+![image](https://github.com/phosphor-v/tm-devops-trainee/assets/113942255/8f332429-e51c-447b-9915-a6dc0530846a)
+### You will see this page
+![image](https://github.com/phosphor-v/tm-devops-trainee/assets/113942255/b6ad3009-c1c6-41c4-a42b-9e1745f9d2c4)
 
-## Amazon EFS:
-Open AWS console and using search find *EC2*
-In dashboard select security groups and click *Create security group*
-![image](https://github.com/phosphor-v/tm-devops-trainee/assets/113942255/ceae75b4-259d-432a-a85e-38e9e6253f92)
-
-On the page that opens give name of *SG*, add *description* and create *inbound/outbound rules* for *EFS* 
-
-![image](https://github.com/phosphor-v/tm-devops-trainee/assets/113942255/83554c70-af78-4047-b9d1-c58ef9149f4b)
-
-
-### Create an Amazon EFS file system named *tm-devops-trainee-efs*.
-"
-Open AWS console and using search find *EFS*
-![image](https://github.com/phosphor-v/tm-devops-trainee/assets/113942255/ab948750-1150-4a35-9f26-60a68175a361)
-
-On the page that opens, click *Create file system* and click on *Customize*
-![image](https://github.com/phosphor-v/tm-devops-trainee/assets/113942255/88400e29-4379-4887-95e9-0a627a81fb81)
-
-
-Give name of file system, change *Transition into Archive* setting to none and in *Performance settings* -> *Throughput mode* choose *Bursting* and click *next*.
-
-![image](https://github.com/phosphor-v/tm-devops-trainee/assets/113942255/b8b0cf85-053a-410d-8ad7-5897345d2721)
-
-
-
-### Ensure that the EFS file system is mounted on the ECS instances to store the HTML content.
-
-
-### Use appropriate security settings for the EFS.
-
-
-## Amazon ECS:
-### Define an ECS task definition that runs a Docker container.
-
-
-### Use a public Docker image of Nginx web server.
-
-
- ### Mount the EFS file system to the container to serve the HTML content.
-
- 
-### Configure the ECS service to run 1 task.
-
-
-## ALB:
-### Create an ALB named "tm-devops-trainee-alb."
-
-
-### Configure the ALB listener on port 80 to forward traffic to the ECS service.
-
-
-### Implement health checks on the ALB to ensure the ECS service's availability.
-
-
-## Security Group:
-### Create security groups for both the ECS instances and the ALB.
-
-
-### Allow incoming traffic on port 80 to the ECS instances from the ALB.
-
-
-### Configure appropriate security settings for the ALB.
-
-
-## Web Application:
-### Create a simple HTML page with the content: "Hello, Techmagic!"
-
-
-### Upload this HTML page to the EFS file system.
+# The difficulties I encountered:
+ **Issue**: Failed to resolve server us-east-1a.fs-c2aXXXX.efs.us-east-1.amazon
+aws.com: Name or service not known
+ **Solution**: [enable dns hostnames](https://github.com/phosphor-v/tm-devops-trainee/blob/ad28a867ec901eef06f5257d7056b158a1c1d20b/task.yaml#L8)https://github.com/phosphor-v/tm-devops-trainee/blob/ad28a867ec901eef06f5257d7056b158a1c1d20b/task.yaml#L8
+ **Issue**: index.html creation in EFS
+ **Solution**: Used [AWS Lambda function](https://github.com/phosphor-v/tm-devops-trainee/blob/ad28a867ec901eef06f5257d7056b158a1c1d20b/task.yaml#L217)https://github.com/phosphor-v/tm-devops-trainee/blob/ad28a867ec901eef06f5257d7056b158a1c1d20b/task.yaml#L217-L249 with ALB trigger
