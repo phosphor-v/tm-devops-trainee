@@ -1,20 +1,79 @@
 AWSTemplateFormatVersion: '2010-09-09'
-
 Parameters:
-  VpcId:
-    Type: AWS::EC2::VPC::Id
-    Description: VPC ID where the resources will be created
-
-  SubnetIds:
-    Type: List<AWS::EC2::Subnet::Id>
-    Description: List of Subnet IDs for ECS instances
-
+  Tag:
+    Type: String
 Resources:
+#Networking
+  VPC:
+    Type: "AWS::EC2::VPC"
+    Properties:
+      CidrBlock: "10.0.0.0/16"
+      EnableDnsHostnames: true
+      Tags:
+      - Key: "Name"
+        Value: 'tm-devops-trainee-vpc'
+
+  SubnetA:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs
+          Ref: 'AWS::Region'
+      VpcId: !Ref "VPC"
+      CidrBlock: "10.0.0.0/24"
+
+  SubnetB:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs
+          Ref: 'AWS::Region'
+      VpcId: !Ref "VPC"
+      MapPublicIpOnLaunch: true
+      CidrBlock: "10.0.1.0/24"
+
+  RouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref "VPC"
+  PublicRoute:   # Public route table has direct routing to IGW:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: "tm-devops-trainee"
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SubnetB
+      RouteTableId: !Ref RouteTable
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SubnetA
+      RouteTableId: !Ref RouteTable
+#Security groups
   EFSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Security group for EFS
-      VpcId: !Ref VpcId
+      VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 2049
@@ -24,32 +83,80 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Security group for ECS instances
-      VpcId: !Ref VpcId
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-
-  ALBSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Security group for ALB
-      VpcId: !Ref VpcId
+      VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
           CidrIp: 0.0.0.0/0
 
-  FileSystem:
-    Type: 'AWS::EFS::FileSystem'
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
     Properties:
-      FileSystemTags:
-        - Key: Name
-          Value: "tm-devops-trainee-efs"
-      PerformanceMode: "generalPurpose"
-      LifecyclePolicies:
-        - TransitionToIA: "AFTER_7_DAYS"
+      GroupDescription: Security group for ALB
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+#IAM_ROLES
+  LambdaExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service: 'lambda.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: 'LambdaEFSAccess'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 'elasticfilesystem:DescribeMountTargets'
+                  - 'elasticfilesystem:ClientRootAccess'
+                  - 'elasticfilesystem:ClientMount'
+                  - 'elasticfilesystem:ClientWrite'
+                  - 'ec2:DescribeNetworkInterfaces'
+                  - 'ec2:CreateNetworkInterface'
+                  - 'ec2:DeleteNetworkInterface'
+                  - 'ec2:DescribeInstances'
+                  - 'ec2:AttachNetworkInterface'
+                Resource: '*'
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [ecs-tasks.amazonaws.com]
+            Action: ['sts:AssumeRole']
+            Condition:
+              ArnLike:
+                aws:SourceArn: !Sub arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:*
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: EFSAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - elasticfilesystem:ClientMount
+                  - elasticfilesystem:ClientWrite
+                  - elasticfilesystem:DescribeMountTargets
+                  - elasticfilesystem:DescribeFileSystems
+                Resource: !GetAtt FileSystem.Arn
 
   ECSRole:
     Type: 'AWS::IAM::Role'
@@ -61,18 +168,102 @@ Resources:
             Principal:
               Service: 'ecs-tasks.amazonaws.com'
             Action: 'sts:AssumeRole'
+            Condition:
+              ArnLike:
+                aws:SourceArn: !Sub arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:*
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
       Policies:
-        - PolicyName: 'ECSRolePolicy'
+        - PolicyName: ExecAccess
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - Effect: 'Allow'
+              - Effect: Allow
                 Action:
-                  - 'ecr:GetAuthorizationToken'
-                  - 'ecr:BatchCheckLayerAvailability'
-                  - 'ecr:BatchGetImage'
+                  - ssmmessages:CreateControlChannel
+                  - ssmmessages:CreateDataChannel
+                  - ssmmessages:OpenControlChannel
+                  - ssmmessages:OpenDataChannel
                 Resource: '*'
-
+#FileSystem
+  FileSystem:
+    Type: 'AWS::EFS::FileSystem'
+    Properties:
+      Encrypted: true
+      FileSystemTags:
+        - Key: Name
+          Value: "tm-devops-trainee-efs"
+      PerformanceMode: "generalPurpose"
+      ThroughputMode: bursting
+  EFSMountTargetOne:
+    Type: AWS::EFS::MountTarget
+    DependsOn:
+    - FileSystem
+    - EFSSecurityGroup
+    Properties:
+      FileSystemId: !Ref FileSystem
+      SubnetId: !Ref SubnetA
+      SecurityGroups:
+        - !Ref EFSSecurityGroup
+  AccessPointResource:
+    Type: 'AWS::EFS::AccessPoint'
+    Properties:
+      FileSystemId: !Ref FileSystem
+      PosixUser:
+        Uid: "0"
+        Gid: "0"
+      RootDirectory:
+        CreationInfo:
+          OwnerGid: "708798"
+          OwnerUid: "7987987"
+          Permissions: "0777"
+  LambdaFunction:
+    DependsOn:
+    - LambdaExecutionRole
+    - FileSystem
+    - EFSMountTargetOne
+    - EFSMountTargetTwo
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      FunctionName: 'Hellotechmagic'
+      Runtime: nodejs14.x
+      Code:
+        ZipFile: |
+          const { promises: fs } = require('fs');
+          exports.handler = async (event) => {
+            const content = '<html><h1>Hello, Techmagic!</h1></html>';
+            await fs.writeFile('/mnt/efs-volume/index.html', content);
+            return {
+              statusCode: 200,
+              body: 'index.html created successfully.'
+            };
+          };
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref EFSSecurityGroup
+          - !Ref ECSSecurityGroup
+        SubnetIds:
+          - !Ref SubnetA
+          - !Ref SubnetB
+      FileSystemConfigs:
+        - Arn: !GetAtt AccessPointResource.Arn
+          LocalMountPath: '/mnt/efs-volume'
+  # Mount target allows usage of the EFS inside of subnet two
+  EFSMountTargetTwo:
+    Type: AWS::EFS::MountTarget
+    DependsOn:
+    - FileSystem
+    - EFSSecurityGroup
+    Properties:
+      FileSystemId: !Ref FileSystem
+      SubnetId: !Ref SubnetB
+      SecurityGroups:
+        - !Ref EFSSecurityGroup
+#ECS
+  ECSCluster:
+    Type: "AWS::ECS::Cluster"
   ECSContainerDefinition:
     Type: 'AWS::ECS::TaskDefinition'
     Properties:
@@ -82,79 +273,82 @@ Resources:
       NetworkMode: awsvpc
       RequiresCompatibilities:
         - FARGATE
-      ExecutionRoleArn: !GetAtt ECSRole.Arn
+      TaskRoleArn: !GetAtt ECSRole.Arn
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
       ContainerDefinitions:
         - Name: 'nginx-container'
-          Image: public.ecr.aws/nginx/nginx:mainline-alpine
+          Image: nginx:latest
           Cpu: 256
           Memory: 512
           PortMappings:
             - ContainerPort: 80
+              Protocol: tcp
           MountPoints:
-            - SourceVolume: "efs-volume"
-              ContainerPath: "/usr/share/nginx/html"
+            - SourceVolume: efs-volume
+              ContainerPath: /usr/share/nginx/html
           Essential: true
       Volumes:
         - Name: efs-volume
           EFSVolumeConfiguration:
             FilesystemId: !Ref FileSystem
-            RootDirectory: "/"
+            RootDirectory: /
             TransitEncryption: ENABLED
-  ECSCluster:
-    Type: "AWS::ECS::Cluster"
   ECSService:
     Type: 'AWS::ECS::Service'
+    DependsOn:
+      - EFSMountTargetOne
+      - EFSMountTargetTwo
+      - Listener
+      - LambdaFunction
     Properties:
+      LoadBalancers:
+        - TargetGroupArn: !Ref ALBTargetGroup
+          ContainerPort: 80
+          ContainerName: nginx-container
       Cluster: !Ref ECSCluster
       DesiredCount: 1
       LaunchType: 'FARGATE'
       TaskDefinition: !Ref ECSContainerDefinition
+      EnableExecuteCommand: true
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: ENABLED
-          Subnets: !Ref SubnetIds
+          Subnets:
+            - !Ref SubnetA
+            - !Ref SubnetB
           SecurityGroups: [!Ref ECSSecurityGroup]
 
+#LoadBalancers
   LoadBalancer:
     Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    DependsOn:
+      - InternetGateway
     Properties:
       Name: 'tm-devops-trainee-alb'
-      Subnets: !Ref SubnetIds
+      Subnets:
+            - !Ref SubnetA
+            - !Ref SubnetB
       SecurityGroups: [!Ref ALBSecurityGroup]
       Scheme: 'internet-facing'
       LoadBalancerAttributes:
         - Key: idle_timeout.timeout_seconds
           Value: '60'
 
-  TargetGroup:
+  ALBTargetGroup:
     Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
     Properties:
       Name: 'tm-devops-trainee-target-group'
       Port: 80
-      Protocol: 'HTTP'
-      VpcId: !Ref VpcId
-      HealthCheckIntervalSeconds: 30
-      HealthCheckPath: '/'
-      HealthCheckProtocol: 'HTTP'
-      HealthCheckTimeoutSeconds: 5
-      HealthyThresholdCount: 2
-      UnhealthyThresholdCount: 2
-      Matcher:
-        HttpCode: '200'
-      TargetType: 'ip'
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref VPC
 
   Listener:
     Type: 'AWS::ElasticLoadBalancingV2::Listener'
     Properties:
-      DefaultActions:
-        - Type: 'fixed-response'
-          FixedResponseConfig:
-            ContentType: 'text/plain'
-            StatusCode: '200'
-            MessageBody: 'Hello, Techmagic!'
       LoadBalancerArn: !Ref LoadBalancer
       Port: 80
       Protocol: 'HTTP'
       DefaultActions:
         - Type: 'forward'
-          TargetGroupArn: !Ref TargetGroup
+          TargetGroupArn: !Ref ALBTargetGroup
