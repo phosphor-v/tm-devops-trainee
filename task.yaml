@@ -233,18 +233,12 @@ Resources:
           exports.handler = async (event) => {
             const content = '<html><h1>Hello, Techmagic!</h1></html>';
             await fs.writeFile('/mnt/efs-volume/index.html', content);
-            var responseBody = JSON.stringify({
-              Status: "SUCCESS",
-              Reason: "See the details in CloudWatch Log Stream: ",
-              PhysicalResourceId: "3843",
-              StackId: event.StackId,
-              RequestId: event.RequestId,
-              LogicalResourceId: event.LogicalResourceId,
-              NoEcho: false,
-              Data: "200"
-            });
-          return(responseBody)
           }
+          var response = require('./cfn-response');
+          exports.handler = function(event, context) {
+            var responseData = {Value: 200};
+            response.send(event, context, response.SUCCESS, responseData);
+          };
       VpcConfig:
         SecurityGroupIds:
           - !Ref EFSSecurityGroup
