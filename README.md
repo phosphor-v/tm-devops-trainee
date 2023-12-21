@@ -27,4 +27,5 @@ aws.com: Name or service not known
  **Issue**: index.html creation in EFS
 
  
- **Solution**: Used [AWS Lambda function](https://github.com/phosphor-v/tm-devops-trainee/blob/389aa2e3b6c142255d5e848ebca5bbe57830a7a1/task.yaml#L217)https://github.com/phosphor-v/tm-devops-trainee/blob/389aa2e3b6c142255d5e848ebca5bbe57830a7a1/task.yaml#L217-L257 with [Custom Resource to invoke](https://github.com/phosphor-v/tm-devops-trainee/blob/389aa2e3b6c142255d5e848ebca5bbe57830a7a1/task.yaml#L258)https://github.com/phosphor-v/tm-devops-trainee/blob/389aa2e3b6c142255d5e848ebca5bbe57830a7a1/task.yaml#L258-L264
+ **Solution**: Used AWS [Lambda function](https://github.com/phosphor-v/tm-devops-trainee/blob/384c2c434f54ddfc74db840b6f5a686e2317cf13/task.yaml#L217)https://github.com/phosphor-v/tm-devops-trainee/blob/384c2c434f54ddfc74db840b6f5a686e2317cf13/task.yaml#L217-L241 
+ with [Custom Resource to invoke](https://github.com/phosphor-v/tm-devops-trainee/blob/389aa2e3b6c142255d5e848ebca5bbe57830a7a1/task.yaml#L258)https://github.com/phosphor-v/tm-devops-trainee/blob/389aa2e3b6c142255d5e848ebca5bbe57830a7a1/task.yaml#L258-L264
